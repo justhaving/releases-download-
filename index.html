@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub 代理链接生成器</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 16px; }
+.container { max-width: 700px; margin: 0 auto; }
+h1 { font-size: 20px; margin-bottom: 16px; color: #58a6ff; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }
+input[type="text"] { width: 100%; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; outline: none; }
+input[type="text"]:focus { border-color: #58a6ff; }
+.btn { display: inline-block; padding: 10px 20px; background: #238636; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin-top: 8px; }
+.btn:hover { background: #2ea043; }
+.btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+.btn-secondary:hover { background: #30363d; }
+.btn-edit { background: #1f6feb; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-right: 4px; }
+.btn-latest { background: #8957e5; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-right: 4px; }
+.link-item { display: flex; align-items: center; gap: 8px; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 8px; }
+.link-item .name { flex: 1; font-size: 12px; color: #8b949e; word-break: break-all; }
+.link-item .actions { display: flex; gap: 6px; flex-shrink: 0; }
+.link-item button { padding: 6px 12px; font-size: 12px; border-radius: 4px; border: none; cursor: pointer; }
+.copy-btn { background: #1f6feb; color: #fff; }
+.open-btn { background: #238636; color: #fff; }
+.saved-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+.saved-item .info { flex: 1; min-width: 0; }
+.saved-item .title { color: #58a6ff; font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+.saved-item .meta { color: #8b949e; font-size: 11px; word-break: break-all; }
+.saved-item .meta .ver { color: #3fb950; }
+.saved-item .ops { display: flex; flex-shrink: 0; margin-left: 8px; flex-wrap: wrap; gap: 4px; }
+.saved-item .ops button { border: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.section-title { font-size: 14px; color: #8b949e; margin: 16px 0 8px; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #238636; color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99; }
+.toast.show { opacity: 1; }
+.hidden { display: none; }
+.detected { font-size: 12px; color: #3fb950; margin-top: 6px; }
+.detected.fail { color: #f85149; }
+.empty { color: #8b949e; font-size: 13px; padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔗 GitHub 代理链接生成器</h1>
+
+<div class="card" id="projectListCard">
+<div class="section-title">📁 我的项目</div>
+<div id="savedList"></div>
+<button class="btn" onclick="showNewForm()">➕ 新建项目</button>
+</div>
+
+<div class="card hidden" id="formCard">
+<div class="section-title" id="formTitle">新建项目</div>
+<label>项目名称（方便自己辨认）</label>
+<input type="text" id="projectName" placeholder="例如：某软件、某工具">
+<label style="margin-top:12px;">原始完整链接（自动识别版本号）</label>
+<input type="text" id="originalUrl" placeholder="https://github.com/user/repo/releases/download/v1.0.0/app.apk">
+<div class="detected" id="detectMsg"></div>
+<div style="margin-top:12px;">
+<button class="btn" onclick="saveProject()">💾 保存</button>
+<button class="btn btn-secondary" onclick="hideForm()" style="margin-left:8px;">取消</button>
+</div>
+</div>
+
+<div class="card hidden" id="useCard">
+<div class="section-title" id="useTitle"></div>
+<div style="margin-bottom:12px;">
+<button class="btn btn-latest" onclick="fetchLatest()" style="margin-top:0;">🔄 获取最新版本</button>
+</div>
+<label>输入新版本号（或点上方自动获取）</label>
+<input type="text" id="newVersion" placeholder="1.2.0">
+<button class="btn" onclick="generateLinks()" style="margin-top:8px;">🚀 生成链接</button>
+<button class="btn btn-secondary" onclick="goBack()" style="margin-top:8px;margin-left:8px;">↩ 返回</button>
+<div id="results" style="margin-top:16px;"></div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== 代理列表 =====
+const PROXIES = [
+{ name: "gh-proxy.com", prefix: "https://gh-proxy.com/" },
+{ name: "ghproxy.net", prefix: "https://ghproxy.net/" },
+{ name: "gh.llkk.cc", prefix: "https://gh.llkk.cc/" },
+{ name: "ghfast.top", prefix: "https://ghfast.top/" },
+{ name: "gh.zwy.one", prefix: "https://gh.zwy.one/" },
+{ name: "ghp.ci", prefix: "https://ghp.ci/" },
+{ name: "ghproxy.homeboyc.cn", prefix: "https://ghproxy.homeboyc.cn/" },
+{ name: "ghfile.geekertao.top", prefix: "https://ghfile.geekertao.top/" },
+{ name: "cdn.crashmc.com", prefix: "https://cdn.crashmc.com/" },
+{ name: "hub.gitmirror.com", prefix: "https://hub.gitmirror.com/" },
+{ name: "github.akams.cn", prefix: "https://github.akams.cn/" },
+{ name: "toolwa.com", prefix: "http://toolwa.com/github/" },
+{ name: "pd.zwc365.com", prefix: "https://pd.zwc365.com/seturl/" },
+{ name: "github-speedup.com", prefix: "https://github-speedup.com/" },
+{ name: "gh.api.99988866.xyz", prefix: "https://gh.api.99988866.xyz/" },
+{ name: "raw.ihtw.moe", prefix: "https://raw.ihtw.moe/" },
+];
+
+// ===== 内置项目 =====
+const DEFAULT_PROJECTS = [
+{ name: "三月七小助手完整包", url: "https://github.com/moesnow/March7thAssistant/releases/download/v2026.10.3/March7thAssistant_full.zip" },
+{ name: "M9A 手机版", url: "https://github.com/MAA1999/M9A/releases/download/v4.12.0/M9A-android-arm64-v8a-v4.12.0.apk" },
+{ name: "三月七小助手更新包", url: "https://github.com/moesnow/March7thAssistant/releases/download/v2026.10.3/update.7z" },
+{ name: "ok-ww 国服版", url: "https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.7.4/ok-ww-win32-China-setup.exe" },
+];
+
+let currentProject = null;
+let currentIndex = -1;
+let editingIndex = -1;
+
+// ===== 版本号识别 =====
+function detectVersion(url) {
+    let m = url.match(/v\d+\.\d+(\.\d+)?/);
+    if (m) return m[0];
+    m = url.match(/\d+\.\d+(\.\d+)?/);
+    if (m) return m[0];
+    m = url.match(/\d{8}/);
+    if (m) return m[0];
+    return null;
+}
+
+// ===== 从链接提取 owner/repo =====
+function extractRepo(url) {
+    const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/releases/);
+    return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+document.getElementById('originalUrl').addEventListener('input', function() {
+    const url = this.value.trim();
+    const msg = document.getElementById('detectMsg');
+    if (!url) { msg.textContent = ''; return; }
+    const ver = detectVersion(url);
+    if (ver) {
+        msg.textContent = '✅ 识别到版本号：' + ver;
+        msg.className = 'detected';
+    } else {
+        msg.textContent = '❌ 未能识别版本号，请检查链接';
+        msg.className = 'detected fail';
+    }
+});
+
+// ===== 数据存取 =====
+function getProjects() {
+    const data = localStorage.getItem('gh_projects_v5');
+    if (data) return JSON.parse(data);
+    const builtin = DEFAULT_PROJECTS.map(p => ({
+        name: p.name,
+        url: p.url,
+        version: detectVersion(p.url) || ''
+    }));
+    saveProjects(builtin);
+    return builtin;
+}
+
+function saveProjects(projects) {
+    localStorage.setItem('gh_projects_v5', JSON.stringify(projects));
+}
+
+// ===== 渲染列表 =====
+function renderList() {
+    const projects = getProjects();
+    const container = document.getElementById('savedList');
+    if (projects.length === 0) {
+        container.innerHTML = '<div class="empty">暂无项目，点击下方按钮新建</div>';
+        return;
+    }
+    container.innerHTML = projects.map((p, i) => `
+        <div class="saved-item">
+            <div class="info">
+                <div class="title">${escapeHtml(p.name || '未命名项目')}</div>
+                <div class="meta">版本号：<span class="ver">${escapeHtml(p.version)}</span><br>${escapeHtml(p.url)}</div>
+            </div>
+            <div class="ops">
+                <button class="btn-edit" onclick="useProject(${i})">使用</button>
+                <button class="btn-latest" onclick="fetchLatest(${i})">最新版</button>
+                <button style="background:#6e7681;color:#fff;" onclick="editProject(${i})">改名</button>
+                <button style="background:#da3633;color:#fff;" onclick="deleteProject(${i})">删除</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ===== 新建 / 编辑 =====
+function showNewForm() {
+    editingIndex = -1;
+    document.getElementById('formCard').classList.remove('hidden');
+    document.getElementById('projectListCard').classList.add('hidden');
+    document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('formTitle').textContent = '新建项目';
+    document.getElementById('projectName').value = '';
+    document.getElementById('originalUrl').value = '';
+    document.getElementById('detectMsg').textContent = '';
+}
+
+function hideForm() {
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('projectListCard').classList.remove('hidden');
+    document.getElementById('useCard').classList.add('hidden');
+}
+
+function saveProject() {
+    const name = document.getElementById('projectName').value.trim() || '未命名项目';
+    const url = document.getElementById('originalUrl').value.trim();
+    if (!url) { toast('请输入原始链接'); return; }
+    const ver = detectVersion(url);
+    if (!ver) { toast('未能识别版本号，请检查链接'); return; }
+
+    const projects = getProjects();
+    if (editingIndex >= 0) {
+        projects[editingIndex] = { name, url, version: ver };
+    } else {
+        projects.push({ name, url, version: ver });
+    }
+    saveProjects(projects);
+    renderList();
+    hideForm();
+    toast(editingIndex >= 0 ? '已更新' : '保存成功');
+    editingIndex = -1;
+}
+
+function editProject(index) {
+    const projects = getProjects();
+    const p = projects[index];
+    editingIndex = index;
+    document.getElementById('formCard').classList.remove('hidden');
+    document.getElementById('projectListCard').classList.add('hidden');
+    document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('formTitle').textContent = '编辑项目';
+    document.getElementById('projectName').value = p.name || '';
+    document.getElementById('originalUrl').value = p.url;
+    document.getElementById('detectMsg').textContent = '✅ 识别到版本号：' + p.version;
+    document.getElementById('detectMsg').className = 'detected';
+}
+
+function deleteProject(index) {
+    const projects = getProjects();
+    projects.splice(index, 1);
+    saveProjects(projects);
+    renderList();
+}
+
+// ===== 使用项目 =====
+function useProject(index) {
+    const projects = getProjects();
+    currentProject = projects[index];
+    currentIndex = index;
+    document.getElementById('projectListCard').classList.add('hidden');
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('useCard').classList.remove('hidden');
+    document.getElementById('useTitle').textContent = '📦 ' + (currentProject.name || '未命名项目') + '（当前版本 ' + currentProject.version + '）';
+    document.getElementById('newVersion').value = '';
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('newVersion').focus();
+}
+
+// ===== 返回逻辑 =====
+function goBack() {
+    const results = document.getElementById('results');
+    const useCard = document.getElementById('useCard');
+    const formCard = document.getElementById('formCard');
+
+    if (!useCard.classList.contains('hidden') && results.innerHTML.trim() !== '') {
+        results.innerHTML = '';
+        document.getElementById('newVersion').value = '';
+        document.getElementById('newVersion').focus();
+        return true;
+    }
+
+    if (!useCard.classList.contains('hidden') || !formCard.classList.contains('hidden')) {
+        useCard.classList.add('hidden');
+        formCard.classList.add('hidden');
+        document.getElementById('projectListCard').classList.remove('hidden');
+        document.getElementById('results').innerHTML = '';
+        currentProject = null;
+        currentIndex = -1;
+        return true;
+    }
+
+    return false;
+}
+
+// ===== 多通道并发查询最新版 =====
+async function fetchLatest(index) {
+    const projects = getProjects();
+    const p = (typeof index === 'number') ? projects[index] : currentProject;
+    if (!p) { toast('请先选择一个项目'); return; }
+
+    const info = extractRepo(p.url);
+    if (!info) { toast('无法从链接识别仓库信息'); return; }
+
+    toast('正在查询最新版本…');
+
+    const apiPath = `repos/${info.owner}/${info.repo}/releases/latest`;
+
+    // 5 个通道并发：直连 + 4 个代理
+    const channels = [
+        `https://api.github.com/${apiPath}`,
+        `https://gh-proxy.com/https://api.github.com/${apiPath}`,
+        `https://ghproxy.net/https://api.github.com/${apiPath}`,
+        `https://ghfast.top/https://api.github.com/${apiPath}`,
+        `https://gh.llkk.cc/https://api.github.com/${apiPath}`,
+    ];
+
+    function tryFetch(url) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('timeout')), 8000);
+            fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } })
+                .then(resp => {
+                    if (!resp.ok) throw new Error('status ' + resp.status);
+                    return resp.json();
+                })
+                .then(data => {
+                    clearTimeout(timer);
+                    if (!data || !data.tag_name) throw new Error('no tag');
+                    resolve(data);
+                })
+                .catch(err => {
+                    clearTimeout(timer);
+                    reject(err);
+                });
+        });
+    }
+
+    let data = null;
+    try {
+        data = await Promise.any(channels.map(tryFetch));
+    } catch (e) {
+        toast('所有通道都失败，请检查网络');
+        return;
+    }
+
+    const latestTag = data.tag_name;
+
+    // 匹配 asset
+    const origFilename = p.url.split('/').pop();
+    const baseName = origFilename.replace(/v?\d+\.\d+[\d.]*/, '').replace(/^[-_.]+/, '');
+    let matchedAsset = null;
+    if (data.assets && data.assets.length) {
+        matchedAsset = data.assets.find(a => a.name.includes(baseName)) || data.assets[0];
+    }
+
+    let newUrl;
+    if (matchedAsset) {
+        newUrl = matchedAsset.browser_download_url;
+    } else {
+        newUrl = p.url.replace(p.version, latestTag);
+    }
+
+    if (typeof index === 'number') {
+        projects[index] = { ...p, url: newUrl, version: latestTag };
+        saveProjects(projects);
+        renderList();
+        toast('已更新到 ' + latestTag);
+    } else {
+        currentProject = { ...p, url: newUrl, version: latestTag };
+        document.getElementById('useTitle').textContent = '📦 ' + (currentProject.name || '未命名项目') + '（当前版本 ' + latestTag + '）';
+        document.getElementById('newVersion').value = latestTag.replace(/^v/, '');
+        toast('最新版本：' + latestTag);
+    }
+}
+
+// ===== 生成链接 =====
+function generateLinks() {
+    let newVer = document.getElementById('newVersion').value.trim();
+    if (!newVer) { toast('请输入新版本号'); return; }
+
+    const origVer = currentProject.version;
+    if (origVer.startsWith('v') && !newVer.startsWith('v')) newVer = 'v' + newVer;
+    if (!origVer.startsWith('v') && newVer.startsWith('v')) newVer = newVer.substring(1);
+
+    const newUrl = currentProject.url.split(origVer).join(newVer);
+
+    const results = document.getElementById('results');
+    results.innerHTML = `<div class="section-title">原始链接（替换后）</div>
+        <div class="link-item"><span class="name">${escapeHtml(newUrl)}</span>
+        <div class="actions">
+            <button class="copy-btn" onclick="copyText('${escapeHtml(newUrl)}')">复制</button>
+            <button class="open-btn" onclick="openUrl('${escapeHtml(newUrl)}')">打开</button>
+        </div></div>
+        <div class="section-title">代理加速链接</div>`;
+
+    PROXIES.forEach(p => {
+        const proxyUrl = p.prefix + newUrl;
+        results.innerHTML += `
+            <div class="link-item">
+                <span class="name">${escapeHtml(p.name)}</span>
+                <div class="actions">
+                    <button class="copy-btn" onclick="copyText('${escapeHtml(proxyUrl)}')">复制</button>
+                    <button class="open-btn" onclick="openUrl('${escapeHtml(proxyUrl)}')">打开</button>
+                </div>
+            </div>`;
+    });
+}
+
+// ===== 打开链接 =====
+function openUrl(url) {
+    if (window.open) {
+        var w = window.open(url, '_blank');
+        if (!w) location.href = url;
+    } else {
+        location.href = url;
+    }
+}
+
+// ===== 工具函数 =====
+function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => toast('已复制')).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('已复制');
+    });
+}
+
+function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+// ===== 物理返回键 =====
+window.addEventListener('popstate', function() {
+    if (goBack()) {
+        history.pushState(null, '', location.href);
+    }
+});
+
+history.pushState(null, '', location.href);
+
+renderList();
+</script>
+</body>
+</html>
