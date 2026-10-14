@@ -33,7 +33,7 @@ github releases包获取最新版本并生成镜像下载链接
 
 网页版地址  
 
-https://q8mdue.kicp.fun
+[[https://q8mdue.kicp.fun](https://oxmsjz.kicp.fun)](https://oxmsjz.kicp.fun)
 
 
 几个本软件的镜像下载链接
