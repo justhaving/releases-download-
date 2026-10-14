@@ -145,7 +145,7 @@ document.getElementById('originalUrl').addEventListener('input', function() {
 
 // ===== 数据存取 =====
 function getProjects() {
-    const data = localStorage.getItem('gh_projects_v6');
+    const data = localStorage.getItem('gh_projects_v7');
     if (data) return JSON.parse(data);
     const builtin = DEFAULT_PROJECTS.map(p => ({
         name: p.name,
@@ -157,7 +157,7 @@ function getProjects() {
 }
 
 function saveProjects(projects) {
-    localStorage.setItem('gh_projects_v6', JSON.stringify(projects));
+    localStorage.setItem('gh_projects_v7', JSON.stringify(projects));
 }
 
 // ===== 渲染列表 =====
@@ -302,7 +302,6 @@ async function fetchLatest(index) {
 
     const apiPath = `repos/${info.owner}/${info.repo}/releases/latest`;
 
-    // 5 个通道并发：直连 + 4 个代理
     const channels = [
         `https://api.github.com/${apiPath}`,
         `https://gh-proxy.com/https://api.github.com/${apiPath}`,
@@ -341,10 +340,10 @@ async function fetchLatest(index) {
 
     const latestTag = data.tag_name;
 
-    // 优先：直接替换原链接的版本号，保持原链接结构不变
-    let newUrl = p.url.replace(p.version, latestTag);
+    // 全局替换：路径和文件名里的版本号一起换
+    let newUrl = p.url.split(p.version).join(latestTag);
 
-    // 校验：新链接的文件名是否真的存在于最新 release 的 assets 里
+    // 校验：新文件名是否真的存在于最新 release 的 assets 里
     const origFilename = p.url.split('/').pop();
     const newFilename = newUrl.split('/').pop();
 
@@ -353,7 +352,7 @@ async function fetchLatest(index) {
         fileExists = data.assets.some(a => a.name === newFilename);
     }
 
-    // 如果原文件名在新版本里不存在（比如文件名结构变了），才去 assets 里找匹配
+    // 如果原文件名在新版本里不存在，才去 assets 里找匹配
     if (!fileExists && data.assets && data.assets.length) {
         const baseName = origFilename.replace(/v?\d+\.\d+[\d.]*/, '').replace(/^[-_.]+/, '');
         const matched = data.assets.find(a => a.name.includes(baseName));
