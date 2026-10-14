@@ -19,6 +19,7 @@ input[type="text"]:focus { border-color: #58a6ff; }
 .btn-secondary:hover { background: #30363d; }
 .btn-edit { background: #1f6feb; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-right: 4px; }
 .btn-latest { background: #8957e5; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; margin-right: 4px; }
+.btn-danger { background: #da3633; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; }
 .link-item { display: flex; align-items: center; gap: 8px; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 8px; }
 .link-item .name { flex: 1; font-size: 12px; color: #8b949e; word-break: break-all; }
 .link-item .actions { display: flex; gap: 6px; flex-shrink: 0; }
@@ -39,6 +40,9 @@ input[type="text"]:focus { border-color: #58a6ff; }
 .detected { font-size: 12px; color: #3fb950; margin-top: 6px; }
 .detected.fail { color: #f85149; }
 .empty { color: #8b949e; font-size: 13px; padding: 8px 0; }
+.proxy-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+.proxy-item .pname { flex: 1; color: #c9d1d9; word-break: break-all; }
+.proxy-item .purl { color: #8b949e; font-size: 11px; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -49,6 +53,7 @@ input[type="text"]:focus { border-color: #58a6ff; }
 <div class="section-title">📁 我的项目</div>
 <div id="savedList"></div>
 <button class="btn" onclick="showNewForm()">➕ 新建项目</button>
+<button class="btn btn-secondary" onclick="showProxyManage()" style="margin-left:8px;">⚙ 管理代理</button>
 </div>
 
 <div class="card hidden" id="formCard">
@@ -75,13 +80,27 @@ input[type="text"]:focus { border-color: #58a6ff; }
 <button class="btn btn-secondary" onclick="goBack()" style="margin-top:8px;margin-left:8px;">↩ 返回</button>
 <div id="results" style="margin-top:16px;"></div>
 </div>
+
+<!-- 代理管理页 -->
+<div class="card hidden" id="proxyCard">
+<div class="section-title">⚙ 管理代理</div>
+<div id="proxyList"></div>
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid #30363d;">
+<label>添加新代理</label>
+<input type="text" id="proxyName" placeholder="代理名称，例如：gh-proxy.com">
+<input type="text" id="proxyPrefix" placeholder="代理前缀，例如：https://gh-proxy.com/" style="margin-top:8px;">
+<button class="btn" onclick="addProxy()" style="margin-top:8px;">➕ 添加</button>
+<button class="btn btn-secondary" onclick="resetProxies()" style="margin-top:8px;margin-left:8px;">🔄 恢复默认</button>
+<button class="btn btn-secondary" onclick="hideProxyManage()" style="margin-top:8px;margin-left:8px;">↩ 返回</button>
+</div>
+</div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-// ===== 代理列表 =====
-const PROXIES = [
+// ===== 默认代理列表 =====
+const DEFAULT_PROXIES = [
 { name: "gh-proxy.com", prefix: "https://gh-proxy.com/" },
 { name: "ghproxy.net", prefix: "https://ghproxy.net/" },
 { name: "gh.llkk.cc", prefix: "https://gh.llkk.cc/" },
@@ -123,7 +142,6 @@ function detectVersion(url) {
     return null;
 }
 
-// ===== 从链接提取 owner/repo =====
 function extractRepo(url) {
     const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/releases/);
     return m ? { owner: m[1], repo: m[2] } : null;
@@ -143,9 +161,9 @@ document.getElementById('originalUrl').addEventListener('input', function() {
     }
 });
 
-// ===== 数据存取 =====
+// ===== 项目数据存取 =====
 function getProjects() {
-    const data = localStorage.getItem('gh_projects_v7');
+    const data = localStorage.getItem('gh_projects_v8');
     if (data) return JSON.parse(data);
     const builtin = DEFAULT_PROJECTS.map(p => ({
         name: p.name,
@@ -157,10 +175,22 @@ function getProjects() {
 }
 
 function saveProjects(projects) {
-    localStorage.setItem('gh_projects_v7', JSON.stringify(projects));
+    localStorage.setItem('gh_projects_v8', JSON.stringify(projects));
 }
 
-// ===== 渲染列表 =====
+// ===== 代理数据存取 =====
+function getProxies() {
+    const data = localStorage.getItem('gh_proxies_v1');
+    if (data) return JSON.parse(data);
+    saveProxies(DEFAULT_PROXIES);
+    return DEFAULT_PROXIES.slice();
+}
+
+function saveProxies(proxies) {
+    localStorage.setItem('gh_proxies_v1', JSON.stringify(proxies));
+}
+
+// ===== 渲染项目列表 =====
 function renderList() {
     const projects = getProjects();
     const container = document.getElementById('savedList');
@@ -178,7 +208,7 @@ function renderList() {
                 <button class="btn-edit" onclick="useProject(${i})">使用</button>
                 <button class="btn-latest" onclick="fetchLatest(${i})">最新版</button>
                 <button style="background:#6e7681;color:#fff;" onclick="editProject(${i})">改名</button>
-                <button style="background:#da3633;color:#fff;" onclick="deleteProject(${i})">删除</button>
+                <button class="btn-danger" onclick="deleteProject(${i})">删除</button>
             </div>
         </div>
     `).join('');
@@ -190,12 +220,13 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// ===== 新建 / 编辑 =====
+// ===== 新建 / 编辑项目 =====
 function showNewForm() {
     editingIndex = -1;
     document.getElementById('formCard').classList.remove('hidden');
     document.getElementById('projectListCard').classList.add('hidden');
     document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('proxyCard').classList.add('hidden');
     document.getElementById('formTitle').textContent = '新建项目';
     document.getElementById('projectName').value = '';
     document.getElementById('originalUrl').value = '';
@@ -206,6 +237,7 @@ function hideForm() {
     document.getElementById('formCard').classList.add('hidden');
     document.getElementById('projectListCard').classList.remove('hidden');
     document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('proxyCard').classList.add('hidden');
 }
 
 function saveProject() {
@@ -235,6 +267,7 @@ function editProject(index) {
     document.getElementById('formCard').classList.remove('hidden');
     document.getElementById('projectListCard').classList.add('hidden');
     document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('proxyCard').classList.add('hidden');
     document.getElementById('formTitle').textContent = '编辑项目';
     document.getElementById('projectName').value = p.name || '';
     document.getElementById('originalUrl').value = p.url;
@@ -256,6 +289,7 @@ function useProject(index) {
     currentIndex = index;
     document.getElementById('projectListCard').classList.add('hidden');
     document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('proxyCard').classList.add('hidden');
     document.getElementById('useCard').classList.remove('hidden');
     document.getElementById('useTitle').textContent = '📦 ' + (currentProject.name || '未命名项目') + '（当前版本 ' + currentProject.version + '）';
     document.getElementById('newVersion').value = '';
@@ -268,7 +302,15 @@ function goBack() {
     const results = document.getElementById('results');
     const useCard = document.getElementById('useCard');
     const formCard = document.getElementById('formCard');
+    const proxyCard = document.getElementById('proxyCard');
 
+    // 代理管理页：回项目列表
+    if (!proxyCard.classList.contains('hidden')) {
+        hideProxyManage();
+        return true;
+    }
+
+    // 结果页：清空结果，留在输入页
     if (!useCard.classList.contains('hidden') && results.innerHTML.trim() !== '') {
         results.innerHTML = '';
         document.getElementById('newVersion').value = '';
@@ -276,6 +318,7 @@ function goBack() {
         return true;
     }
 
+    // 输入页或表单页：回项目列表
     if (!useCard.classList.contains('hidden') || !formCard.classList.contains('hidden')) {
         useCard.classList.add('hidden');
         formCard.classList.add('hidden');
@@ -287,6 +330,69 @@ function goBack() {
     }
 
     return false;
+}
+
+// ===== 代理管理 =====
+function showProxyManage() {
+    document.getElementById('projectListCard').classList.add('hidden');
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('useCard').classList.add('hidden');
+    document.getElementById('proxyCard').classList.remove('hidden');
+    renderProxyList();
+}
+
+function hideProxyManage() {
+    document.getElementById('proxyCard').classList.add('hidden');
+    document.getElementById('projectListCard').classList.remove('hidden');
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('useCard').classList.add('hidden');
+}
+
+function renderProxyList() {
+    const proxies = getProxies();
+    const container = document.getElementById('proxyList');
+    if (proxies.length === 0) {
+        container.innerHTML = '<div class="empty">暂无代理，请在下方添加</div>';
+        return;
+    }
+    container.innerHTML = proxies.map((p, i) => `
+        <div class="proxy-item">
+            <div style="flex:1;min-width:0;">
+                <div class="pname">${escapeHtml(p.name)}</div>
+                <div class="purl">${escapeHtml(p.prefix)}</div>
+            </div>
+            <button class="btn-danger" onclick="deleteProxy(${i})">删除</button>
+        </div>
+    `).join('');
+}
+
+function addProxy() {
+    const name = document.getElementById('proxyName').value.trim();
+    const prefix = document.getElementById('proxyPrefix').value.trim();
+    if (!name || !prefix) { toast('请填写名称和前缀'); return; }
+    if (!prefix.startsWith('http')) { toast('前缀必须以 http 开头'); return; }
+    if (!prefix.endsWith('/')) { toast('前缀必须以 / 结尾'); return; }
+
+    const proxies = getProxies();
+    proxies.push({ name, prefix });
+    saveProxies(proxies);
+    document.getElementById('proxyName').value = '';
+    document.getElementById('proxyPrefix').value = '';
+    renderProxyList();
+    toast('已添加');
+}
+
+function deleteProxy(index) {
+    const proxies = getProxies();
+    proxies.splice(index, 1);
+    saveProxies(proxies);
+    renderProxyList();
+}
+
+function resetProxies() {
+    saveProxies(DEFAULT_PROXIES.slice());
+    renderProxyList();
+    toast('已恢复默认代理');
 }
 
 // ===== 多通道并发查询最新版 =====
@@ -302,13 +408,12 @@ async function fetchLatest(index) {
 
     const apiPath = `repos/${info.owner}/${info.repo}/releases/latest`;
 
-    const channels = [
-        `https://api.github.com/${apiPath}`,
-        `https://gh-proxy.com/https://api.github.com/${apiPath}`,
-        `https://ghproxy.net/https://api.github.com/${apiPath}`,
-        `https://ghfast.top/https://api.github.com/${apiPath}`,
-        `https://gh.llkk.cc/https://api.github.com/${apiPath}`,
-    ];
+    // 用当前用户配置的代理来请求 API（取前几个）
+    const userProxies = getProxies();
+    const channels = [`https://api.github.com/${apiPath}`];
+    userProxies.slice(0, 4).forEach(pr => {
+        channels.push(pr.prefix + `https://api.github.com/${apiPath}`);
+    });
 
     function tryFetch(url) {
         return new Promise((resolve, reject) => {
@@ -343,23 +448,20 @@ async function fetchLatest(index) {
     // 全局替换：路径和文件名里的版本号一起换
     let newUrl = p.url.split(p.version).join(latestTag);
 
-    // 校验：新文件名是否真的存在于最新 release 的 assets 里
+    // 校验新文件名是否存在于 assets
     const origFilename = p.url.split('/').pop();
     const newFilename = newUrl.split('/').pop();
-
     let fileExists = false;
     if (data.assets && data.assets.length) {
         fileExists = data.assets.some(a => a.name === newFilename);
     }
 
-    // 如果原文件名在新版本里不存在，才去 assets 里找匹配
     if (!fileExists && data.assets && data.assets.length) {
         const baseName = origFilename.replace(/v?\d+\.\d+[\d.]*/, '').replace(/^[-_.]+/, '');
         const matched = data.assets.find(a => a.name.includes(baseName));
         if (matched) {
             newUrl = matched.browser_download_url;
         }
-        // 匹配不到就保留原链接结构（只换版本号），不强行拿 assets[0]
     }
 
     if (typeof index === 'number') {
@@ -386,6 +488,9 @@ function generateLinks() {
 
     const newUrl = currentProject.url.split(origVer).join(newVer);
 
+    // 使用用户配置的代理
+    const proxies = getProxies();
+
     const results = document.getElementById('results');
     results.innerHTML = `<div class="section-title">原始链接（替换后）</div>
         <div class="link-item"><span class="name">${escapeHtml(newUrl)}</span>
@@ -393,9 +498,14 @@ function generateLinks() {
             <button class="copy-btn" onclick="copyText('${escapeHtml(newUrl)}')">复制</button>
             <button class="open-btn" onclick="openUrl('${escapeHtml(newUrl)}')">打开</button>
         </div></div>
-        <div class="section-title">代理加速链接</div>`;
+        <div class="section-title">代理加速链接（${proxies.length} 个）</div>`;
 
-    PROXIES.forEach(p => {
+    if (proxies.length === 0) {
+        results.innerHTML += '<div class="empty">暂无代理，请去「管理代理」添加</div>';
+        return;
+    }
+
+    proxies.forEach(p => {
         const proxyUrl = p.prefix + newUrl;
         results.innerHTML += `
             <div class="link-item">
