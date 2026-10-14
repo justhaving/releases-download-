@@ -145,7 +145,7 @@ document.getElementById('originalUrl').addEventListener('input', function() {
 
 // ===== 数据存取 =====
 function getProjects() {
-    const data = localStorage.getItem('gh_projects_v5');
+    const data = localStorage.getItem('gh_projects_v6');
     if (data) return JSON.parse(data);
     const builtin = DEFAULT_PROJECTS.map(p => ({
         name: p.name,
@@ -157,7 +157,7 @@ function getProjects() {
 }
 
 function saveProjects(projects) {
-    localStorage.setItem('gh_projects_v5', JSON.stringify(projects));
+    localStorage.setItem('gh_projects_v6', JSON.stringify(projects));
 }
 
 // ===== 渲染列表 =====
@@ -341,19 +341,26 @@ async function fetchLatest(index) {
 
     const latestTag = data.tag_name;
 
-    // 匹配 asset
+    // 优先：直接替换原链接的版本号，保持原链接结构不变
+    let newUrl = p.url.replace(p.version, latestTag);
+
+    // 校验：新链接的文件名是否真的存在于最新 release 的 assets 里
     const origFilename = p.url.split('/').pop();
-    const baseName = origFilename.replace(/v?\d+\.\d+[\d.]*/, '').replace(/^[-_.]+/, '');
-    let matchedAsset = null;
+    const newFilename = newUrl.split('/').pop();
+
+    let fileExists = false;
     if (data.assets && data.assets.length) {
-        matchedAsset = data.assets.find(a => a.name.includes(baseName)) || data.assets[0];
+        fileExists = data.assets.some(a => a.name === newFilename);
     }
 
-    let newUrl;
-    if (matchedAsset) {
-        newUrl = matchedAsset.browser_download_url;
-    } else {
-        newUrl = p.url.replace(p.version, latestTag);
+    // 如果原文件名在新版本里不存在（比如文件名结构变了），才去 assets 里找匹配
+    if (!fileExists && data.assets && data.assets.length) {
+        const baseName = origFilename.replace(/v?\d+\.\d+[\d.]*/, '').replace(/^[-_.]+/, '');
+        const matched = data.assets.find(a => a.name.includes(baseName));
+        if (matched) {
+            newUrl = matched.browser_download_url;
+        }
+        // 匹配不到就保留原链接结构（只换版本号），不强行拿 assets[0]
     }
 
     if (typeof index === 'number') {
